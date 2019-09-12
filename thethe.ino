@@ -1,11 +1,12 @@
 #include <MIDI.h>
 
 // General constants
-const int ANTENNA1 = 1;                 // Antenna 1
-const int ANTENNA2 = 2;                 // Antenna 2
-const int NO_PITCH = -1;                // No pitch detected
-const int MAX_PITCH_DISTANCE_CM = 70;   // Max recognized/allowed distance for the "pitch" antenna (antenna 1)
-const int DEFAULT_VELOCITY = 100;       // Default velocity
+const int ANTENNA1 = 1;                         // Antenna 1
+const int ANTENNA2 = 2;                         // Antenna 2
+const int SENSE_DELAY_MS = 300;                 // Pause in millis before reading antennas again
+const int NO_PITCH = -1;                        // No pitch detected
+const int MAX_PITCH_DISTANCE_CM = 70;           // Max recognized/allowed distance for the "pitch" antenna (antenna 1)
+const int DEFAULT_VELOCITY = 100;               // Default velocity
 
 // Scales
 const int CHROMATIC = 0;
@@ -17,6 +18,7 @@ const int PENTATONIC_MAJOR = 5;
 const int PENTATONIC_MINOR = 6;
 
 // Scale intervals
+/*
 const int SCALE_INTERVALS[][] = {  
   {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
   {2, 2, 1, 2, 2, 2, 1},
@@ -26,6 +28,7 @@ const int SCALE_INTERVALS[][] = {
   {2, 2, 3, 2, 3},
   {3, 2, 2, 3, 2}
 };
+*/
 
 // Antenna 1 (pitch) pin numbers
 const int ANTENNA1_TRIGGER_PIN = 2;
@@ -49,7 +52,7 @@ int modifierType = VOLUME;
 // Last played pitch
 int lastPitch = NO_PITCH;
 // MIDI output chanel
-int midiChannel = 1
+int midiChannel = 1;
 // ---------------------------------------------
 
 // MIDI init
@@ -71,9 +74,9 @@ void setup()
 
 void loop()
 {
-  int pitch = pitch();
-  int modifierType = modifierType();
-  int modifierValue = modifierValue();
+  int pitch = readPitch();
+  int modifierType = readModifierType();
+  int modifierValue = 64; //readModifierValue();
 
   int velocity = modifierType == VOLUME ? modifierValue : DEFAULT_VELOCITY;
 
@@ -83,34 +86,44 @@ void loop()
       MIDI.sendNoteOn(lastPitch, 0, midiChannel);      
   } else {
     // Clear if new pitch is different from previous one, if any
-    if (pitch != lastPitch)
+    if (pitch != lastPitch && lastPitch != NO_PITCH)
       MIDI.sendNoteOn(lastPitch, 0, midiChannel);      
 
     MIDI.sendNoteOn(pitch, velocity, midiChannel);
   }
 
   lastPitch = pitch;
+  delay(SENSE_DELAY_MS);
 }
 
-int pitch() {
-  float distanceInCm = distance(ANTENNA1);
+int readPitch() {
+  double distanceInCm = distance(ANTENNA1);
   if (distanceInCm < 0 || distanceInCm > MAX_PITCH_DISTANCE_CM) return NO_PITCH;
 
   // TODO: Pitch
-  return 60;
+  switch((int)distanceInCm % 8) {
+    case 0: return 60;
+    case 1: return 62;
+    case 2: return 64;
+    case 3: return 65;
+    case 4: return 67;
+    case 5: return 69;
+    case 6: return 71;
+    case 7: return 72;
+  }
 }
 
-int modifierType() {
+int readModifierType() {
   return modifierType;
 }
 
-int modifierValue() {
-  float distanceInCm = distance(ANTENNA2);
+int readModifierValue() {
+  double distanceInCm = distance(ANTENNA2);
   // TODO: Check range for the current modifier type
   return distanceInCm;
 }
 
-float distance(antenna) {
+double distance(int antenna) {
   int triggerPin = antenna == ANTENNA1 ? ANTENNA1_TRIGGER_PIN : ANTENNA2_TRIGGER_PIN;
   int echoPin = antenna == ANTENNA1 ? ANTENNA1_ECHO_PIN : ANTENNA2_ECHO_PIN;
   
@@ -120,5 +133,5 @@ float distance(antenna) {
   delayMicroseconds(10);
   digitalWrite(triggerPin, LOW);
 
-  return pulseIn(echoPin, HIGH) * 0.0175;  
+  return pulseIn(echoPin, HIGH) * 0.017;  
 }
