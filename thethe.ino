@@ -1,12 +1,15 @@
+#include <NewPing.h>
 #include <MIDI.h>
 
 // General constants
 const int ANTENNA1 = 1;                         // Antenna 1
 const int ANTENNA2 = 2;                         // Antenna 2
-const int SENSE_DELAY_MS = 300;                 // Pause in millis before reading antennas again
+const int SENSE_DELAY_MS = 40;                  // Pause in millis before reading antennas again
 const int NO_PITCH = -1;                        // No pitch detected
-const int MAX_PITCH_DISTANCE_CM = 70;           // Max recognized/allowed distance for the "pitch" antenna (antenna 1)
+const int MAX_DISTANCE_CM = 60;                 // Max recognized/allowed distance for both antennas
 const int DEFAULT_VELOCITY = 100;               // Default velocity
+const int SONAR_ITERATIONS = 5;                 // Number of sonar iterations to loop for better measurements
+
 
 // Scales
 const int CHROMATIC = 0;
@@ -37,6 +40,10 @@ const int ANTENNA1_ECHO_PIN = 3;
 // Antenna 2 (volume/other) pin numbers
 const int ANTENNA2_TRIGGER_PIN = 7;
 const int ANTENNA2_ECHO_PIN = 8;
+
+// Sonars
+NewPing SONAR1 (ANTENNA1_TRIGGER_PIN, ANTENNA1_ECHO_PIN, MAX_DISTANCE_CM);
+NewPing SONAR2 (ANTENNA2_TRIGGER_PIN, ANTENNA2_ECHO_PIN, MAX_DISTANCE_CM);
 
 // Modifiers
 const int VOLUME = 1;
@@ -86,10 +93,11 @@ void loop()
       MIDI.sendNoteOn(lastPitch, 0, midiChannel);      
   } else {
     // Clear if new pitch is different from previous one, if any
-    if (pitch != lastPitch && lastPitch != NO_PITCH)
-      MIDI.sendNoteOn(lastPitch, 0, midiChannel);      
-
-    MIDI.sendNoteOn(pitch, velocity, midiChannel);
+    if (pitch != lastPitch) {
+      if (lastPitch != NO_PITCH)
+        MIDI.sendNoteOn(lastPitch, 0, midiChannel);
+      MIDI.sendNoteOn(pitch, velocity, midiChannel);
+    }
   }
 
   lastPitch = pitch;
@@ -98,18 +106,17 @@ void loop()
 
 int readPitch() {
   double distanceInCm = distance(ANTENNA1);
-  if (distanceInCm < 0 || distanceInCm > MAX_PITCH_DISTANCE_CM) return NO_PITCH;
+  if (distanceInCm <= 0 || distanceInCm > MAX_DISTANCE_CM) return NO_PITCH;
 
   // TODO: Pitch
-  switch((int)distanceInCm % 8) {
-    case 0: return 60;
-    case 1: return 62;
-    case 2: return 64;
-    case 3: return 65;
-    case 4: return 67;
-    case 5: return 69;
-    case 6: return 71;
-    case 7: return 72;
+  const int BASE = 72;
+  switch((int)(distanceInCm / 10)) {
+    case 0: return BASE;
+    case 1: return BASE+3;
+    case 2: return BASE+5;
+    case 3: return BASE+7;
+    case 4: return BASE+10;
+    case 5: return BASE+12;
   }
 }
 
@@ -124,14 +131,7 @@ int readModifierValue() {
 }
 
 double distance(int antenna) {
-  int triggerPin = antenna == ANTENNA1 ? ANTENNA1_TRIGGER_PIN : ANTENNA2_TRIGGER_PIN;
-  int echoPin = antenna == ANTENNA1 ? ANTENNA1_ECHO_PIN : ANTENNA2_ECHO_PIN;
-  
-  digitalWrite(triggerPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(triggerPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(triggerPin, LOW);
-
-  return pulseIn(echoPin, HIGH) * 0.017;  
+  return (antenna == 1) ? 
+    SONAR1.convert_cm(SONAR1.ping_median(SONAR_ITERATIONS)) : 
+    SONAR2.convert_cm(SONAR2.ping_median(SONAR_ITERATIONS));
 }
