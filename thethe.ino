@@ -4,11 +4,11 @@
 // General constants
 const int ANTENNA1 = 1;                         // Antenna 1
 const int ANTENNA2 = 2;                         // Antenna 2
-const int SENSE_DELAY_MS = 45;                  // Pause in millis before reading antennas again
+const int SENSE_DELAY_MS = 15;                  // Pause in millis before reading antennas again
 const int NO_NOTE = -1;                         // No note detected
 const int NO_CONTROLLER_VALUE = -1;             // No controller value detected
-const int FREE_FIRST_CM = 2;                    // Free space before start sensing antennas 
-const int MAX_DISTANCE_CM = 60;                 // Max recognized/allowed distance for both antennas
+const double FREE_FIRST_CM = 4.0;               // Free space before start sensing antennas 
+const double MAX_DISTANCE_CM = 60.0;            // Max recognized/allowed distance for both antennas
 const int DEFAULT_VELOCITY = 100;               // Default velocity
 const int SONAR_ITERATIONS = 5;                 // Number of sonar iterations to loop for better measurements
 const int MAX_CONTROLLER_VALUE = 127;           // Max value for the controller (antenna 2) value
@@ -89,6 +89,8 @@ int lastControllerValue = NO_CONTROLLER_VALUE;
 boolean reverseDistanceMeaningAntenna1 = false;
 // Reverse distance meaning for antenna 2?
 boolean reverseDistanceMeaningAntenna2 = false;
+// Flip antennas (antenna 1 becomes antenna 2 and viceversa)
+boolean flipAntennas = false;
 // ---------------------------------------------
 
 // MIDI init
@@ -147,14 +149,14 @@ int readNote() {
 
   const int intervalsToOctave = SCALE_INTERVALS_TO_OCTAVE[scale];
   const int totalIntervals = intervalsToOctave * octaves;
-  const double intervalSpaceInCm = MAX_DISTANCE_CM / (totalIntervals + 1);
+  const double intervalSpaceInCm = MAX_DISTANCE_CM / (totalIntervals + octaves);
   const int intervals = floor(distanceInCm / intervalSpaceInCm);
 
-  int semitones = 0;
+  int note = baseNote;
   for(int i = 0; i < intervals; i++)
-    semitones += SCALE_INTERVALS[scale][i % intervalsToOctave];
+    note += SCALE_INTERVALS[scale][i % intervalsToOctave];
     
-  return baseNote + semitones;
+  return note;
 }
 
 int readControllerNumber() {
@@ -162,7 +164,10 @@ int readControllerNumber() {
 }
 
 int readControllerValue() {
-  double distanceInCm = distance(ANTENNA2) - FREE_FIRST_CM;
+  double realDistance = distance(ANTENNA2);
+  if (realDistance == 0.0) return NO_CONTROLLER_VALUE;
+  
+  double distanceInCm = realDistance - FREE_FIRST_CM;
   if (distanceInCm <= 0 || distanceInCm >= MAX_DISTANCE_CM) return NO_CONTROLLER_VALUE;
   
   int value = distanceInCm / MAX_DISTANCE_CM * MAX_CONTROLLER_VALUE;
@@ -170,7 +175,15 @@ int readControllerValue() {
 }
 
 double distance(int antenna) {
-  return (antenna == 1) ? 
-    SONAR1.convert_cm(SONAR1.ping_median(SONAR_ITERATIONS)) : 
-    SONAR2.convert_cm(SONAR2.ping_median(SONAR_ITERATIONS));
+  int reading = 0;
+  if (flipAntennas)
+    reading = (antenna == 2) ? 
+      (SONAR1.ping_median(SONAR_ITERATIONS)) : 
+      (SONAR2.ping_median(SONAR_ITERATIONS));
+  else
+    reading = (antenna == 1) ? 
+        (SONAR1.ping_median(SONAR_ITERATIONS)) : 
+        (SONAR2.ping_median(SONAR_ITERATIONS));
+  
+  return reading / 29.0 / 2.0;
 }
