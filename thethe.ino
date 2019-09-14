@@ -162,13 +162,8 @@ int readControllerNumber() {
 }
 
 int readControllerValue() {
-  double realDistance = distance(ANTENNA2);
-  if (realDistance == 0) return NO_CONTROLLER_VALUE;
-  
-  double distanceInCm = realDistance - FREE_FIRST_CM;
-  
-  if (distanceInCm <= 0) return reverseDistanceMeaningAntenna2 ? MAX_CONTROLLER_VALUE : 0;
-  if (distanceInCm > MAX_DISTANCE_CM) return reverseDistanceMeaningAntenna2 ? 0 : MAX_CONTROLLER_VALUE;
+  double distanceInCm = distance(ANTENNA2) - FREE_FIRST_CM;
+  if (distanceInCm <= 0 || distanceInCm >= MAX_DISTANCE_CM) return NO_CONTROLLER_VALUE;
   
   int value = distanceInCm / MAX_DISTANCE_CM * MAX_CONTROLLER_VALUE;
   return reverseDistanceMeaningAntenna2 ? (MAX_CONTROLLER_VALUE - value) : value;
