@@ -4,12 +4,13 @@
 // General constants
 const int ANTENNA1 = 1;                         // Antenna 1
 const int ANTENNA2 = 2;                         // Antenna 2
-const int SENSE_DELAY_MS = 40;                  // Pause in millis before reading antennas again
-const int NO_PITCH = -1;                        // No pitch detected
+const int SENSE_DELAY_MS = 45;                  // Pause in millis before reading antennas again
+const int NO_NOTE = -1;                         // No note detected
 const int MAX_DISTANCE_CM = 60;                 // Max recognized/allowed distance for both antennas
 const int DEFAULT_VELOCITY = 100;               // Default velocity
 const int SONAR_ITERATIONS = 5;                 // Number of sonar iterations to loop for better measurements
-
+const int MAX_CONTROLLER_VALUE = 127;           // Max value for the controller (antenna 2) value
+const int INTERVALS_PER_SCALE = 12;             // Max number of intervals from root of every scale 
 
 // Scales
 const int CHROMATIC = 0;
@@ -19,21 +20,31 @@ const int HARMONIC_MINOR = 3;
 const int MELODIC_MINOR = 4;
 const int PENTATONIC_MAJOR = 5;
 const int PENTATONIC_MINOR = 6;
+const int BLUES = 7;
 
-// Scale intervals
-/*
-const int SCALE_INTERVALS[][] = {  
-  {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-  {2, 2, 1, 2, 2, 2, 1},
-  {2, 1, 2, 2, 1, 2, 2},
-  {2, 1, 2, 2, 1, 3, 1},
-  {2, 1, 2, 2, 2, 2, 1},
-  {2, 2, 3, 2, 3},
-  {3, 2, 2, 3, 2}
+const int SCALE_INTERVALS_TO_OCTAVE[] = {  
+  12,
+  7,
+  7,
+  7,
+  7,
+  5,
+  5,
+  6
 };
-*/
 
-// Antenna 1 (pitch) pin numbers
+const int SCALE_INTERVALS[][12] = {  
+  {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+  {2, 2, 1, 2, 2, 2, 1, 0, 0, 0, 0, 0},
+  {2, 1, 2, 2, 1, 2, 2, 0, 0, 0, 0, 0},
+  {2, 1, 2, 2, 1, 3, 1, 0, 0, 0, 0, 0},
+  {2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0},
+  {2, 2, 3, 2, 3, 0, 0, 0, 0, 0, 0, 0},
+  {3, 2, 2, 3, 2, 0, 0, 0, 0, 0, 0, 0},
+  {3, 2, 1, 1, 3, 2, 0, 0, 0, 0, 0, 0}
+};
+
+// Antenna 1 (note) pin numbers
 const int ANTENNA1_TRIGGER_PIN = 2;
 const int ANTENNA1_ECHO_PIN = 3;
 
@@ -45,21 +56,26 @@ const int ANTENNA2_ECHO_PIN = 8;
 NewPing SONAR1 (ANTENNA1_TRIGGER_PIN, ANTENNA1_ECHO_PIN, MAX_DISTANCE_CM);
 NewPing SONAR2 (ANTENNA2_TRIGGER_PIN, ANTENNA2_ECHO_PIN, MAX_DISTANCE_CM);
 
-// Modifiers
-const int VOLUME = 1;
+// Controllers
+const int VELOCITY = -1;
+const int MODULATION = 1;
 
 
 // ---------------------------------------------
 // ---------------- State ----------------------
 // ---------------------------------------------
+// Scale
+int scale = PENTATONIC_MINOR;
 // Octaves
 int octaves = 1;
 // This is what antenna 2 is controlling
-int modifierType = VOLUME;
-// Last played pitch
-int lastPitch = NO_PITCH;
+int controllerNumber = MODULATION;
+// Last played note
+int lastNote = NO_NOTE;
 // MIDI output chanel
 int midiChannel = 1;
+// Base MIDI note
+int baseNote = 60; // Middle C
 // ---------------------------------------------
 
 // MIDI init
@@ -81,53 +97,59 @@ void setup()
 
 void loop()
 {
-  int pitch = readPitch();
-  int modifierType = readModifierType();
-  int modifierValue = 64; //readModifierValue();
+  int note = readNote();
+  int controllerNumber = readControllerNumber();
+  int controllerValue = readControllerValue();
 
-  int velocity = modifierType == VOLUME ? modifierValue : DEFAULT_VELOCITY;
+  int velocity = controllerNumber == VELOCITY ? controllerValue : DEFAULT_VELOCITY;
 
-  if (pitch == NO_PITCH) {
-    // Clear current pitch, if any
-    if (lastPitch != NO_PITCH)
-      MIDI.sendNoteOn(lastPitch, 0, midiChannel);      
-  } else {
-    // Clear if new pitch is different from previous one, if any
-    if (pitch != lastPitch) {
-      if (lastPitch != NO_PITCH)
-        MIDI.sendNoteOn(lastPitch, 0, midiChannel);
-      MIDI.sendNoteOn(pitch, velocity, midiChannel);
-    }
-  }
+  // Clear current note, if any, if needed
+  if (lastNote != NO_NOTE && note != lastNote) 
+    noteOn(lastNote, 0, midiChannel);
+    
+  // Play new note, if any
+  if (note != NO_NOTE && note != lastNote)
+    noteOn(note, velocity, midiChannel);  
+  lastNote = note;
 
-  lastPitch = pitch;
+  if (controllerNumber != VELOCITY)
+    controlChange(controllerNumber, controllerValue, midiChannel);
+
   delay(SENSE_DELAY_MS);
 }
 
-int readPitch() {
+void noteOn(int note, int velocity, int channel) {
+  MIDI.sendNoteOn(note, velocity, channel);
+}
+
+void controlChange(int controller, int value, int channel) {
+  //MIDI.sendControlChange(controller, value, channel);
+}
+
+int readNote() {
   double distanceInCm = distance(ANTENNA1);
-  if (distanceInCm <= 0 || distanceInCm > MAX_DISTANCE_CM) return NO_PITCH;
+  if (distanceInCm <= 0 || distanceInCm >= MAX_DISTANCE_CM) return NO_NOTE;
 
-  // TODO: Pitch
-  const int BASE = 72;
-  switch((int)(distanceInCm / 10)) {
-    case 0: return BASE;
-    case 1: return BASE+3;
-    case 2: return BASE+5;
-    case 3: return BASE+7;
-    case 4: return BASE+10;
-    case 5: return BASE+12;
-  }
+  const int intervalsToOctave = SCALE_INTERVALS_TO_OCTAVE[scale];
+  const int totalIntervals = intervalsToOctave * octaves;
+  const double intervalSpaceInCm = MAX_DISTANCE_CM / (totalIntervals + 1);
+  const int intervals = floor(distanceInCm / intervalSpaceInCm);
+
+  int semitones = 0;
+  for(int i = 0; i < intervals; i++)
+    semitones += SCALE_INTERVALS[scale][i % intervalsToOctave];
+    
+  return baseNote + semitones;
 }
 
-int readModifierType() {
-  return modifierType;
+int readControllerNumber() {
+  return controllerNumber;
 }
 
-int readModifierValue() {
+int readControllerValue() {
   double distanceInCm = distance(ANTENNA2);
-  // TODO: Check range for the current modifier type
-  return distanceInCm;
+  if (distanceInCm <= 0 || distanceInCm > MAX_DISTANCE_CM) return 0;
+  return (distanceInCm * 100 / MAX_DISTANCE_CM) * MAX_CONTROLLER_VALUE;
 }
 
 double distance(int antenna) {
