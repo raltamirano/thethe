@@ -6,11 +6,13 @@ const int ANTENNA1 = 1;                         // Antenna 1
 const int ANTENNA2 = 2;                         // Antenna 2
 const int SENSE_DELAY_MS = 45;                  // Pause in millis before reading antennas again
 const int NO_NOTE = -1;                         // No note detected
+const int NO_CONTROLLER_VALUE = -1;             // No controller value detected
+const int FREE_FIRST_CM = 2;                    // Free space before start sensing antennas 
 const int MAX_DISTANCE_CM = 60;                 // Max recognized/allowed distance for both antennas
 const int DEFAULT_VELOCITY = 100;               // Default velocity
 const int SONAR_ITERATIONS = 5;                 // Number of sonar iterations to loop for better measurements
 const int MAX_CONTROLLER_VALUE = 127;           // Max value for the controller (antenna 2) value
-const int INTERVALS_PER_SCALE = 12;             // Max number of intervals from root of every scale 
+const int INTERVALS_PER_SCALE = 12;             // Max number of intervals from root of every scale
 
 // Scales
 const int CHROMATIC = 0;
@@ -53,12 +55,17 @@ const int ANTENNA2_TRIGGER_PIN = 7;
 const int ANTENNA2_ECHO_PIN = 8;
 
 // Sonars
-NewPing SONAR1 (ANTENNA1_TRIGGER_PIN, ANTENNA1_ECHO_PIN, MAX_DISTANCE_CM);
-NewPing SONAR2 (ANTENNA2_TRIGGER_PIN, ANTENNA2_ECHO_PIN, MAX_DISTANCE_CM);
+NewPing SONAR1 (ANTENNA1_TRIGGER_PIN, ANTENNA1_ECHO_PIN, MAX_DISTANCE_CM + FREE_FIRST_CM);
+NewPing SONAR2 (ANTENNA2_TRIGGER_PIN, ANTENNA2_ECHO_PIN, MAX_DISTANCE_CM + FREE_FIRST_CM);
 
 // Controllers
 const int VELOCITY = -1;
 const int MODULATION = 1;
+const int PORTAMENTO_TIME = 5;
+const int VOLUME = 7;
+const int BALANCE = 8;
+const int PAN = 10;
+const int EXPRESSION = 11;
 
 
 // ---------------------------------------------
@@ -76,6 +83,12 @@ int lastNote = NO_NOTE;
 int midiChannel = 1;
 // Base MIDI note
 int baseNote = 60; // Middle C
+// Last controller value
+int lastControllerValue = NO_CONTROLLER_VALUE;
+// Reverse distance meaning for antenna 1?
+boolean reverseDistanceMeaningAntenna1 = false;
+// Reverse distance meaning for antenna 2?
+boolean reverseDistanceMeaningAntenna2 = false;
 // ---------------------------------------------
 
 // MIDI init
@@ -112,9 +125,11 @@ void loop()
     noteOn(note, velocity, midiChannel);  
   lastNote = note;
 
-  if (controllerNumber != VELOCITY)
+  if (controllerNumber != VELOCITY && controllerValue != NO_CONTROLLER_VALUE && controllerValue != lastControllerValue) {
     controlChange(controllerNumber, controllerValue, midiChannel);
-
+    lastControllerValue = controllerValue;
+  }
+  
   delay(SENSE_DELAY_MS);
 }
 
@@ -123,11 +138,11 @@ void noteOn(int note, int velocity, int channel) {
 }
 
 void controlChange(int controller, int value, int channel) {
-  //MIDI.sendControlChange(controller, value, channel);
+ MIDI.sendControlChange(controller, value, channel);
 }
 
 int readNote() {
-  double distanceInCm = distance(ANTENNA1);
+  double distanceInCm = distance(ANTENNA1) - FREE_FIRST_CM;
   if (distanceInCm <= 0 || distanceInCm >= MAX_DISTANCE_CM) return NO_NOTE;
 
   const int intervalsToOctave = SCALE_INTERVALS_TO_OCTAVE[scale];
@@ -147,9 +162,16 @@ int readControllerNumber() {
 }
 
 int readControllerValue() {
-  double distanceInCm = distance(ANTENNA2);
-  if (distanceInCm <= 0 || distanceInCm > MAX_DISTANCE_CM) return 0;
-  return (distanceInCm * 100 / MAX_DISTANCE_CM) * MAX_CONTROLLER_VALUE;
+  double realDistance = distance(ANTENNA2);
+  if (realDistance == 0) return NO_CONTROLLER_VALUE;
+  
+  double distanceInCm = realDistance - FREE_FIRST_CM;
+  
+  if (distanceInCm <= 0) return reverseDistanceMeaningAntenna2 ? MAX_CONTROLLER_VALUE : 0;
+  if (distanceInCm > MAX_DISTANCE_CM) return reverseDistanceMeaningAntenna2 ? 0 : MAX_CONTROLLER_VALUE;
+  
+  int value = distanceInCm / MAX_DISTANCE_CM * MAX_CONTROLLER_VALUE;
+  return reverseDistanceMeaningAntenna2 ? (MAX_CONTROLLER_VALUE - value) : value;
 }
 
 double distance(int antenna) {
