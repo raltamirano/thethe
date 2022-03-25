@@ -1,17 +1,20 @@
 #include <MIDI.h>
 #include <NewPing.h>
 
-#define MAX_SENSORS        2
-#define TRIGGER1_PIN       2
-#define ECHO1_PIN          3
-#define TRIGGER2_PIN       4
-#define ECHO2_PIN          5
-#define MAX_DISTANCE_CM   55
-#define DEAD_ZONE_CM       5
+#define MAX_SENSORS                  2
+#define TRIGGER1_PIN                 2
+#define ECHO1_PIN                    3
+#define TRIGGER2_PIN                 4
+#define ECHO2_PIN                    5
+#define MAX_DISTANCE_CM             55
+#define DEAD_ZONE_CM                 5
+#define HIT_VELOCITY_THRESHOLD      35
+#define HIT_TIME_THRESHOLD         120
 
 #define NOTE               0
 #define CC                 1
 #define BEND               2
+#define HIT                3
 #define DISABLED          99
 
 #define DEFAULT_PINGS      3
@@ -28,7 +31,7 @@
 #define CC_CENTER         64
 #define CC_NO_RESET       -1
 
-#define BASS_DRUM         35
+#define BASS_DRUM         36
 #define SNARE             38
 
 
@@ -44,10 +47,10 @@ int WHOLE_TONE_INTERVALS[] = { 2, 2, 2, 2, 2, 2 };
 // General parameters
 int sensors = 2;
 int pings[MAX_SENSORS] = {DEFAULT_PINGS, DEFAULT_PINGS};
-boolean reversed[MAX_SENSORS] = {false, true};
+boolean reversed[MAX_SENSORS] = {false, false};
 int steps[MAX_SENSORS] = {6, 3};                             // How many divisions on the measureable space (MAX_DISTANCE_CM)
-int channel[MAX_SENSORS] = {1, 2};
-int mode[MAX_SENSORS] = {NOTE, NOTE};
+int channel[MAX_SENSORS] = {1, 10};
+int mode[MAX_SENSORS] = {DISABLED, HIT};
 
 // CC mode-related parameters
 int cc[MAX_SENSORS] = {1, 22};
@@ -60,10 +63,12 @@ int notes[MAX_SENSORS][128];
 boolean latch[MAX_SENSORS] = {true, true};
 boolean noReadingEndsLatch[MAX_SENSORS] = {true, true};       // 'noReadingEndsLatch = false': 100% true latching
 int velocity[MAX_SENSORS] = {100, 100};
-int fixedDuration[MAX_SENSORS] = {250, 10};                   // For non-latching option
+int fixedDuration[MAX_SENSORS] = {250, -1};                   // For non-latching option, HIT mode, etc.
+int fixedPitch[MAX_SENSORS] = {-1, SNARE};                    // For HIT operation mode
 
 // Tracking & State
 int last[MAX_SENSORS] = { -1, -1};
+unsigned long times[MAX_SENSORS] = {millis(), millis()};
 
 
 // Program
@@ -98,7 +103,8 @@ void loop() {
             MIDI.sendNoteOn(last[s], velocity[s], channel[s]);
 
             if (!latch[s]) {
-              delay(fixedDuration[s]);
+              if (fixedDuration[s] > 0)
+                delay(fixedDuration[s]);
               MIDI.sendNoteOn(last[s], 0, channel[s]);
             }
           }
@@ -130,6 +136,24 @@ void loop() {
         if (last[s] != value) {
           MIDI.sendPitchBend(value, channel[s]);
           last[s] = value;
+        }
+        break;
+
+      case HIT:
+        if (fixedPitch[s] != -1) {
+          value = readVelocity(s);
+          unsigned long now = millis();
+          if ((now - times[s]) > HIT_TIME_THRESHOLD) {
+            if (abs(last[s] - value) > HIT_VELOCITY_THRESHOLD) {            
+              MIDI.sendNoteOn(fixedPitch[s], value, channel[s]); // Debounce needed?
+              if (fixedDuration[s] > 0) {
+                delay(fixedDuration[s]);
+                MIDI.sendNoteOff(fixedPitch[s], 0, channel[s]);
+              }
+              last[s] = value;
+              times[s] = now;
+            }
+          }          
         }
         break;
     }
@@ -166,6 +190,16 @@ int readPitchBend(int sensor) {
   return reversed[sensor] ?
          map(netDistance, 0, MAX_DISTANCE_CM, 8191, -8192) :
          map(netDistance, 0, MAX_DISTANCE_CM, -8192, 8191);
+}
+
+int readVelocity(int sensor) {
+  int distance = readDistanceCM(sensor);
+  if (distance <= DEAD_ZONE_CM) return 0;
+
+  int netDistance = distance - DEAD_ZONE_CM;
+  return reversed[sensor] ?
+         map(netDistance, 0, MAX_DISTANCE_CM, 127, 0) :
+         map(netDistance, 0, MAX_DISTANCE_CM, 0, 127);
 }
 
 int readDistanceCM(int sensor) {
