@@ -6,67 +6,73 @@
 #define ECHO1_PIN                    3
 #define TRIGGER2_PIN                 4
 #define ECHO2_PIN                    5
+#define PINGS                        3
 #define MAX_DISTANCE_CM             55
 #define DEAD_ZONE_CM                 5
-#define HIT_VELOCITY_THRESHOLD      35
+#define HIT_VELOCITY_THRESHOLD      20
 #define HIT_TIME_THRESHOLD         120
 
-#define NOTE               0
-#define CC                 1
-#define BEND               2
-#define HIT                3
-#define DISABLED          99
+// Sensor Modes
+#define NOTE                         0
+#define CC                           1
+#define BEND                         2
+#define HIT                          3
+#define DISABLED                    99
 
-#define DEFAULT_PINGS      3
-#define CHROMATIC          0
-#define MAJOR              1
-#define MINOR              2
-#define HARMONIC_MINOR     3
-#define MAJOR_PENTATONIC   4
-#define MINOR_PENTATONIC   5
-#define WHOLE_TONE         6
-#define GM_BASSDRUM_SNARE 70
-#define ONE_FOUR_FIVE     71
+// Scales/Pitch class sets
+#define CHROMATIC                    0
+#define MAJOR                        1
+#define MINOR                        2
+#define HARMONIC_MINOR               3
+#define MAJOR_PENTATONIC             4
+#define MINOR_PENTATONIC             5
+#define WHOLE_TONE                   6
+#define GM_BASSDRUM_SNARE           70
+#define ONE_FOUR_FIVE               71
 
-#define CC_CENTER         64
-#define CC_NO_RESET       -1
+// CC 
+#define CC_CENTER                   64
+#define CC_NO_RESET                 -1
 
-#define BASS_DRUM         36
-#define SNARE             38
+// GM MIDI Drum Kit instruments
+#define BASS_DRUM                   36
+#define SNARE                       38
+#define CLOSED_HI_HAT               42
+#define OPEN_HI_HAT                 46
+#define CRASH_1                     49
 
 
 // Configuration
-int CHROMATIC_INTERVALS[] = { 1 };
-int MAJOR_INTERVALS[] = {2, 2, 1, 2, 2, 2, 1};
-int MINOR_INTERVALS[] = {2, 1, 2, 2, 1, 2, 2};
-int HARMONIC_MINOR_INTERVALS[] = { 2, 1, 2, 2, 1, 3, 1 };
-int MAJOR_PENTATONIC_INTERVALS[] = { 2, 2, 3, 2, 3 };
-int MINOR_PENTATONIC_INTERVALS[] = { 3, 2, 2, 3, 2 };
-int WHOLE_TONE_INTERVALS[] = { 2, 2, 2, 2, 2, 2 };
+int CHROMATIC_INTERVALS[]                                         = {1};
+int MAJOR_INTERVALS[]                                             = {2, 2, 1, 2, 2, 2, 1};
+int MINOR_INTERVALS[]                                             = {2, 1, 2, 2, 1, 2, 2};
+int HARMONIC_MINOR_INTERVALS[]                                    = {2, 1, 2, 2, 1, 3, 1};
+int MAJOR_PENTATONIC_INTERVALS[]                                  = {2, 2, 3, 2, 3};
+int MINOR_PENTATONIC_INTERVALS[]                                  = {3, 2, 2, 3, 2};
+int WHOLE_TONE_INTERVALS[]                                        = {2, 2, 2, 2, 2, 2};
+
 
 // General parameters
-int sensors = 2;
-int pings[MAX_SENSORS] = {DEFAULT_PINGS, DEFAULT_PINGS};
-boolean reversed[MAX_SENSORS] = {false, false};
-int steps[MAX_SENSORS] = {6, 3};                             // How many divisions on the measureable space (MAX_DISTANCE_CM)
-int channel[MAX_SENSORS] = {1, 10};
-int mode[MAX_SENSORS] = {DISABLED, HIT};
-
+boolean activated[MAX_SENSORS]                                    = {true, true};
+boolean reversed[MAX_SENSORS]                                     = {false, false};
+int steps[MAX_SENSORS]                                            = {6, 3};                                                                    // How many divisions on the measureable space (MAX_DISTANCE_CM)
+int channel[MAX_SENSORS]                                          = {1, 10};
+int mode[MAX_SENSORS]                                             = {NOTE, HIT};
 // CC mode-related parameters
-int cc[MAX_SENSORS] = {1, 22};
-int ccNoReadingValue[MAX_SENSORS] = {CC_CENTER, CC_NO_RESET};
-
+int cc[MAX_SENSORS]                                               = {1, 1};
+int ccNoReadingValue[MAX_SENSORS]                                 = {CC_CENTER, CC_NO_RESET};
 // NOTE mode-related parameters
-int root[MAX_SENSORS] = {60, 36};
-int scale[MAX_SENSORS] = {MINOR_PENTATONIC, ONE_FOUR_FIVE};
-int notes[MAX_SENSORS][128];
-boolean latch[MAX_SENSORS] = {true, true};
-boolean noReadingEndsLatch[MAX_SENSORS] = {true, true};       // 'noReadingEndsLatch = false': 100% true latching
-int velocity[MAX_SENSORS] = {100, 100};
-int fixedDuration[MAX_SENSORS] = {250, -1};                   // For non-latching option, HIT mode, etc.
-int fixedPitch[MAX_SENSORS] = {-1, SNARE};                    // For HIT operation mode
+int root[MAX_SENSORS]                                             = {60, 36};
+int scale[MAX_SENSORS]                                            = {MINOR_PENTATONIC, ONE_FOUR_FIVE};
+boolean latch[MAX_SENSORS]                                        = {true, true};
+boolean noReadingEndsLatch[MAX_SENSORS]                           = {true, true};                                                             // 'noReadingEndsLatch = false': 100% true latching
+int velocity[MAX_SENSORS]                                         = {100, 100};
+int fixedDuration[MAX_SENSORS]                                    = {250, -1};                                                                // For non-latching option, HIT mode, etc.
+int fixedPitch[MAX_SENSORS]                                       = {-1, OPEN_HI_HAT};                                                        // For HIT operation mode
+
 
 // Tracking & State
+int notes[MAX_SENSORS][128];
 int last[MAX_SENSORS] = { -1, -1};
 unsigned long times[MAX_SENSORS] = {millis(), millis()};
 
@@ -87,7 +93,10 @@ NewPing S[] = {NewPing (TRIGGER1_PIN, ECHO1_PIN, MAX_DISTANCE_CM + DEAD_ZONE_CM)
 void loop() {
   int value;
 
-  for (int s = 0; s < sensors; s++) {
+  for (int s = 0; s < MAX_SENSORS; s++) {
+    if (!activated[s])
+      continue;
+      
     value = -1;
 
     switch (mode[s]) {
@@ -157,7 +166,7 @@ void loop() {
         }
         break;
     }
-  } // for(sensors)
+  }
 }
 
 int readNote(int sensor) {
@@ -203,7 +212,7 @@ int readVelocity(int sensor) {
 }
 
 int readDistanceCM(int sensor) {
-  return pings[sensor] > 1 ? S[sensor].convert_cm(S[sensor].ping_median(pings[sensor])) : S[sensor].ping_cm();
+  return S[sensor].convert_cm(S[sensor].ping_median(PINGS));
 }
 
 void defineScaleNotes(int sensor) {
